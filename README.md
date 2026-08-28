@@ -1,39 +1,70 @@
-# Reflex — Complete Submission Bundle
+# Reflex
 
-Power Learn Project · "Reflex" Readiness Sprint
+Delivery coordination for small Kenyan retailers — a retailer logs a
+request, a dispatcher assigns it to a rider, the rider updates status live,
+with every transition kept in an append-only log.
 
-## What's in here
+Power Learn Project · "Reflex" Readiness Sprint · Solo submission
 
-| File | What it is |
+---
+
+## Start here (for a grader)
+
+| Read this for... | File |
 |---|---|
-| `Reflex_Executive_Deck.pptx` | 12-slide defense deck — Problem → Solution → Architecture → Trade-offs → Roadmap, one takeaway per slide |
-| `Reflex_Demo_Script.docx` | Second-by-second script for the 10-minute live demo |
-| `Reflex_Timing_Log.xlsx` | Timing log template — fill in during your two required dry runs |
-| `TRADEOFFS.md` | One-page trade-off log — 4 weak points, each with an "acceptable because…" |
-| `ARCHITECTURE.md` | Full design rationale — stack, data model, flow, edge cases handled |
-| `RUBRIC_SELF_CHECK.md` | Maps every deliverable to the scoring rubric, flags what still needs live rehearsal |
-| `backend/` | Node/Express + PostgreSQL API, WebSocket broadcast, schema |
-| `frontend/` | PWA — retail-styled UI, offline queue, QR scan confirmation |
+| The 5-slide-arc executive story | `Reflex_Executive_Deck.pptx` |
+| Why each architecture decision was made | `ARCHITECTURE.md` |
+| The three weak points, named up front | `TRADEOFFS.md` |
+| The scripted live demo, timed segment by segment | `Reflex_Demo_Script.docx` |
+| Cross-exam prep, State→Context→Evidence | `ANTICIPATED_QA.md` |
+| Rehearsal record — what's actually been practiced | `TIMING_LOG.md`, `CRITIQUE_TRACKER.md` |
+| How every deliverable maps to the scoring rubric | `RUBRIC_SELF_CHECK.md` |
+| The working code | `backend/`, `frontend/` |
 
-## Before you submit — what YOU still need to do
-
-Everything that can be built ahead of time is done and verified working.
-Two things in the rubric can only be produced by you, live:
-
-1. **Run the timing log for real.** `Reflex_Timing_Log.xlsx` has target times
-   pre-filled; it needs your actual dry-run numbers in the yellow cells —
-   at least two runs, per the Day 2 and Day 4 schedule.
-2. **Rehearse the cross-exam answers out loud**, not just read them. The
-   demo script gives you the words; Delivery & Presence is scored on how it
-   lands live.
-
-## Quick start (for your own rehearsal / the panel's benefit if they ask to see it run)
+## Running it
 
 ```bash
 createdb reflex
 psql -d reflex -f backend/schema.sql
-cd backend && npm install && npm start
+cd backend
+npm install
+npm start
 ```
-Then open `http://localhost:3000/`, register a retailer/dispatcher/rider account each, and run the flow from the demo script.
 
-See `RUBRIC_SELF_CHECK.md` for the full breakdown against the scoring rubric.
+Open `http://localhost:3000/`. Register one account each as `retailer`,
+`dispatcher`, and `rider`, then run the flow from `Reflex_Demo_Script.docx`:
+retailer logs a request → dispatcher assigns it → rider marks it picked up
+and scans a QR code to confirm delivery. Every screen updates live over
+WebSocket as the others act.
+
+Defaults connect to `postgres@localhost:5432/reflex` with password `reflex`
+— override via `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`.
+
+## Project structure
+
+```
+backend/
+  schema.sql              — Postgres schema (append-only status_events log)
+  src/
+    server.js              — Express + WebSocket entry point
+    auth.js                — JWT signing/verification middleware
+    db.js                   — Postgres connection pool
+    routes/
+      auth.js               — register/login endpoints
+      deliveries.js          — create/list requests, audit history
+      assignments.js         — dispatcher assigns rider (row-locked)
+      status.js              — rider status updates (idempotent), QR confirm
+    websocket/hub.js        — broadcasts status events to connected clients
+frontend/
+  public/
+    index.html, app.js, styles.css, idb-queue.js, service-worker.js
+```
+
+## Honesty note
+
+`TIMING_LOG.md` and `CRITIQUE_TRACKER.md` reflect real rehearsal only — a
+couple of segments practiced and cleaned up, plus one full run-through that
+surfaced genuine gaps. The rest of those logs is intentionally blank,
+waiting on real dry runs rather than filled with invented numbers. See
+`RUBRIC_SELF_CHECK.md` for the full status against each rubric competency,
+including what still needs to happen live before submission.
