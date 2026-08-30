@@ -20,6 +20,8 @@ Power Learn Project · "Reflex" Readiness Sprint · Solo submission
 | Rehearsal record — what's actually been practiced | `TIMING_LOG.md`, `CRITIQUE_TRACKER.md` |
 | How every deliverable maps to the scoring rubric | `RUBRIC_SELF_CHECK.md` |
 | The working code | `backend/`, `frontend/` |
+| Production-hardening notes and deploy checklist | `DEPLOYMENT.md`, `Dockerfile`, `docker-compose.yml`, `backend/.env.example` |
+| Automated test suite | `backend/test/` — run with `npm test` (see `backend/test/README.md`) |
 
 ## Running it
 

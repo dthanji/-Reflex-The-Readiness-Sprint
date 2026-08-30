@@ -1,6 +1,25 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'reflex-dev-secret-change-in-prod';
+// Fail loudly in production if no secret is configured — no silent fallback
+// to a value that's sitting in a public GitHub repo. In development, generate
+// a random per-process secret so the app still boots for local testing, but
+// warn clearly since tokens won't survive a restart.
+let JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'JWT_SECRET is not set. Refusing to start in production without it — ' +
+      'set a long random value via your environment/secrets manager.'
+    );
+  }
+  JWT_SECRET = crypto.randomBytes(32).toString('hex');
+  console.warn(
+    '[reflex] WARNING: JWT_SECRET not set. Using a random secret for this ' +
+    'process only — all tokens will be invalidated on restart. Set ' +
+    'JWT_SECRET in your environment before deploying.'
+  );
+}
 
 function signToken(user) {
   return jwt.sign(
