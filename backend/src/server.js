@@ -26,6 +26,11 @@ console.log('[reflex][diagnostic] PORT:', process.env.PORT);
 
 const app = express();
 
+// Render runs the application behind a reverse proxy and forwards the
+// original client IP in X-Forwarded-For. Trust the single proxy hop so
+// Express and express-rate-limit can safely identify the real client IP.
+app.set('trust proxy', 1);
+
 // CORS: restricted to an explicit allowlist via ALLOWED_ORIGINS (comma-
 // separated), not wide open. Two cases are always allowed regardless of
 // that allowlist:
