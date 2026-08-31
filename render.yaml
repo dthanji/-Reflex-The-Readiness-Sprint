@@ -1,0 +1,32 @@
+databases:
+  - name: reflex-db
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: reflex
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      # Wired directly to the database above — resolves to its Internal
+      # Database URL, so no manual copy-pasting of connection strings.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: reflex-db
+          property: connectionString
+      # Render generates a random secret value on creation — you never
+      # see or set this yourself, and it's never in this file.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      # Left blank: the backend serves the PWA frontend itself, so normal
+      # use is same-origin and doesn't need this set. Add a value here if
+      # you later host the frontend separately from this backend.
+      - key: ALLOWED_ORIGINS
+        value: ""

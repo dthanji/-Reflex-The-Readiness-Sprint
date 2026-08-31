@@ -14,23 +14,37 @@ const wsHub = require('./websocket/hub');
 const app = express();
 
 // CORS: restricted to an explicit allowlist via ALLOWED_ORIGINS (comma-
-// separated), not wide open. Requests with no Origin header (curl, mobile
-// PWA shell, same-origin) are allowed through since they aren't a
-// cross-origin browser risk. If ALLOWED_ORIGINS isn't set, no cross-origin
-// browser requests are permitted — safer default than allowing everything.
+// separated), not wide open. Two cases are always allowed regardless of
+// that allowlist:
+//   1. Requests with no Origin header (curl, mobile PWA shell) — not a
+//      cross-origin browser risk.
+//   2. Same-origin requests — the browser includes an Origin header on
+//      state-changing requests (POST/PUT/DELETE) even when the request
+//      targets the same host the page was loaded from, not just on truly
+//      cross-origin calls. Since this backend also serves the PWA frontend
+//      itself, that's the normal case, not an edge case — comparing the
+//      Origin header's host against the request's own Host header handles
+//      it correctly without requiring ALLOWED_ORIGINS to be set at all.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
 
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`Origin ${origin} not allowed by CORS`));
+app.use(cors((req, callback) => {
+  const origin = req.header('Origin');
+  let isSameOrigin = false;
+  if (origin) {
+    try {
+      isSameOrigin = new URL(origin).host === req.get('host');
+    } catch (e) {
+      isSameOrigin = false;
     }
-  },
+  }
+  if (!origin || isSameOrigin || allowedOrigins.includes(origin)) {
+    callback(null, { origin: true });
+  } else {
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
+  }
 }));
 
 // Turn a CORS rejection into a clean 403 instead of leaking a stack trace as a 500.
