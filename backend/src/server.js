@@ -11,6 +11,19 @@ const assignmentRoutes = require('./routes/assignments');
 const statusRoutes = require('./routes/status');
 const wsHub = require('./websocket/hub');
 
+// TEMPORARY DIAGNOSTIC — remove once DATABASE_URL connectivity is confirmed
+// working in production. Prints only presence/shape of required env vars,
+// never any actual substring of a secret value, so this is safe to leave
+// in logs temporarily but shouldn't stay in the codebase long-term.
+const dbUrl = process.env.DATABASE_URL || '';
+console.log('[reflex][diagnostic] DATABASE_URL present:', !!dbUrl,
+  'length:', dbUrl.length,
+  'looks like a postgres URL:', dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://'));
+console.log('[reflex][diagnostic] NODE_ENV:', JSON.stringify(process.env.NODE_ENV));
+console.log('[reflex][diagnostic] JWT_SECRET present:', !!process.env.JWT_SECRET,
+  'length:', (process.env.JWT_SECRET || '').length);
+console.log('[reflex][diagnostic] PORT:', process.env.PORT);
+
 const app = express();
 
 // CORS: restricted to an explicit allowlist via ALLOWED_ORIGINS (comma-
