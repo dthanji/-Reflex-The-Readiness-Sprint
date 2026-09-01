@@ -1,7 +1,6 @@
 # Reflex — Rubric Self-Check
 
-Run through before submission. Each row maps a rubric competency to the specific
-place in the deliverables where it's satisfied.
+Run through before submission. Each row maps a rubric competency to the specific place in the deliverables where it's satisfied.
 
 ---
 
@@ -11,101 +10,88 @@ place in the deliverables where it's satisfied.
 
 | Slide | One takeaway |
 |---|---|
-| 1. Title | Reflex replaces WhatsApp coordination with one shared, live record |
-| 2. The coordination gap | No visibility today — the problem, stated plainly |
-| 3. Three people, one broken thread | Every persona loses something different in the current process |
-| 4. One shared record, live for everyone | The core solution concept, one sentence |
-| 5. From request to doorstep | The four-step flow, one owner per step |
-| 6. Built for spotty connectivity | The stack, and why each piece was chosen |
-| 7. The status column that doesn't exist | The single architecture decision worth defending hardest |
-| 8. Live when connected, safe when it's not | Real-time + offline sync in one picture |
-| 9. What we simplified — and why | Trade-offs surfaced before being asked |
-| 10. Where real systems break | Edge cases named and how they're handled |
-| 11. What's next | Roadmap, three concrete next steps |
-| 12. Ready for cross-exam | The close — invites questions rather than avoiding them |
+| 1. Title | Reflex replaces fragmented WhatsApp/phone coordination with one shared, live delivery record |
+| 2. The coordination gap | The problem is missing shared state, not simply moving parcels |
+| 3. Three people, one broken thread | Retailer, dispatcher and rider each lose something different in the current process |
+| 4. One shared record, live for everyone | Reflex gives every role the right view of the same delivery state |
+| 5. From request to doorstep | A clear state machine gives each step one owner and blocks illegal jumps |
+| 6. Built for spotty connectivity | The stack is intentionally small, relational, real-time and offline-capable |
+| 7. The status column that doesn't exist | Current status is derived from an append-only event log rather than overwritten |
+| 8. Live when connected, safe when it's not | WebSockets provide live updates while IndexedDB + idempotency protect offline replay |
+| 9. What we simplified — and why | The pilot accepts bounded infrastructure and onboarding trade-offs instead of hiding them |
+| 10. Where real systems break | Delivery-code enforcement, stuck-in-transit recovery and failed-delivery reassignment are explicit system paths |
+| 11. What's next | The next gains are role-controlled onboarding, scale-out messaging, richer proof and better offline UX |
+| 12. Ready for cross-exam | The build is live, the important flows are verified, and remaining gaps are named honestly |
 
-Check: no slide carries two ideas. Verified by re-reading each slide's title —
-each is a single claim, not a list of claims.
+**Current deck status:** the previous deck was written before the delivery-code enforcement, stuck-in-transit recovery, and dispatcher reassignment work. It should be replaced with the updated 12-slide deck so the presentation matches the current build.
 
-**Self-assessment: meets the 5-band description.** A non-technical reader can
-follow problem → solution → architecture → trade-offs → roadmap without
-technical background, because each slide only asks them to hold one idea
-before moving on.
+**Self-assessment:** the narrative remains a 5-band structure when the deck is updated to these current takeaways. The story is still problem → solution → architecture → trade-offs → roadmap, but the evidence now includes the completed delivery-control and recovery paths.
 
 ---
 
 ## Defense & Cross-Exam (target: 5)
 
-*"Uses State→Context→Evidence consistently; says 'I don't know, here's how I'd
-find out' when appropriate instead of bluffing."*
+*"Uses State→Context→Evidence consistently; says 'I don't know, here's how I'd find out' when appropriate instead of bluffing."*
 
-- The **Demo Script** (`Reflex_Demo_Script.docx`) ends with an explicit
-  cross-exam handoff instructing State → Context → Evidence for every answer,
-  and models the "I don't know, here's how I'd find out" response.
-- The **trade-off log** (`TRADEOFFS.md`) is written in exactly that structure
-  for all four weak points: what it is (state) → why accepted (context) →
-  what a real number/decision looked like (evidence).
-- Live-tested evidence is available to cite under questioning, not just
-  claimed: the full request→assign→pickup→deliver→confirm lifecycle was
-  run against a real Postgres database; the idempotent dedupe on
-  `client_event_id` was tested by deliberately replaying the same event
-  twice; the row-lock against concurrent assignment was verified; the
-  WebSocket broadcast was confirmed live between two connected clients.
-  These aren't assumptions — they're things you watched happen, so if asked
-  "did you test that" the answer is "yes, here's what I ran."
+- The **Demo Script** (`Reflex_Demo_Script.docx`) remains the presentation handoff into cross-exam and should be kept aligned with the current demo order.
+- The **trade-off log** (`TRADEOFFS.md`) should describe the current gaps, not previously fixed vulnerabilities.
+- The architecture gives concrete evidence to defend: append-only status events, server-side transition guards, server-generated delivery codes, single-use confirmation records, reassignment after failure, and idempotent offline replay.
+- **Live production evidence verified during the latest test session:**
+  - Retailer created an order and received a server-generated customer delivery code.
+  - Dispatcher assigned the order to the rider.
+  - Rider moved the order to `PICKED_UP`.
+  - Rider completed delivery using the customer delivery code, producing `DELIVERED`.
+  - A second order was deliberately taken through `FAILED`.
+  - Dispatcher successfully reassigned the failed order.
+  - The reassigned rider then picked it up and completed delivery successfully.
 
-**Gap to close yourself:** State→Context→Evidence only scores a 5 if you
-*deliver* it that way live, under real pressure. The script gives you the
-structure; Day 2's dry run and Day 3's mock panel are where you prove you
-can hold it without reading off a card. Practice the trade-offs section
-(8:30–9:30 in the script) until it doesn't sound rehearsed.
+**Important honesty boundary:** this live session verified the core delivery lifecycle and failure/reassignment recovery. It did **not** constitute two timed presentation dry runs, so the timing requirement remains open.
 
 ---
 
 ## Delivery & Presence (target: 5)
 
-*"Hits time exactly, transitions between presenters are invisible, visuals
-support rather than repeat the speech."*
+*"Hits time exactly, transitions between presenters are invisible, visuals support rather than repeat the speech."*
 
-- **Timing:** the demo script is budgeted to the second across 9 segments
-  totaling exactly 10:00. The `Reflex_Timing_Log.xlsx` workbook is ready for
-  you to log actual times against that budget across at least two dry runs
-  (Day 2 peer run, Day 3 mock panel) — **this is the one rubric item that
-  can't be completed by me on your behalf, since it requires you to actually
-  rehearse out loud against a clock.** Fill it in as you go.
-- **Visuals support, don't repeat:** deck slides use short claims and
-  diagrams (persona icons, status-flow arrows, architecture blocks) rather
-  than paragraphs — the narration in the demo script carries the explanation,
-  the slide carries the anchor point.
-- **Transitions:** solo presentation — no handoffs to coordinate, so this
-  competency reduces to keeping your own pacing steady and not letting the
-  demo-to-slide switches create dead air.
+- **Timing:** the demo script is budgeted to the second across 9 segments totaling exactly 10:00. The timing log remains the correct place to record actual stopwatch results.
+- **Current evidence:** the application workflow has now been rehearsed live in production, including both successful delivery and failed-delivery reassignment.
+- **Still outstanding:** two full timed presentation dry runs have not been completed. This cannot honestly be marked complete until the presentation is actually delivered against a stopwatch.
+- **Visuals:** the updated deck should use short claims and simple diagrams rather than reproducing the implementation details in paragraph form.
+- **Solo delivery:** no presenter handoffs are required; the main risk is pacing and screen-switch dead air.
 
-**Gap to close yourself:** this competency is scored on live delivery, not
-on what's written down. Two rehearsed dry runs, timed, are what earns the 5 —
-the log just gives you a place to prove it happened.
+**Gap to close yourself:** complete two full timed runs and record the real numbers. Do not invent timing evidence.
 
 ---
 
-## Deliverables checklist — status
+## Deliverables checklist — current status
 
 | Item | Status |
 |---|---|
-| Frozen build / documented design | ✅ Full working repo — backend, PWA, live-tested and deployed to Render. Since the fixes described above, the build grew further: delivery codes, rider ratings, stuck-in-transit detection, and dispatcher reassignment were added, plus automatic schema init/migration on boot and a GitHub Actions workflow for resetting the deployed database without local tools. |
-| Deck (Problem→Solution→Architecture→Trade-offs→Roadmap, one takeaway/slide) | ⚠️ `Reflex_Executive_Deck.pptx`, 12 slides — **written before the ratings/delivery-code/stuck-in-transit features existed, so it describes an earlier version of the build.** The `.md` docs (`ARCHITECTURE.md`, `TRADEOFFS.md`, `ANTICIPATED_QA.md`) have been updated to match the current code; the deck has not. Worth deciding whether to update it or address the gap live if a panelist asks about a feature the deck doesn't mention. |
-| One-page trade-off log, 3+ weak points, "acceptable because…" | ✅ `TRADEOFFS.md` — now 5 weak points, including two found by reviewing the newer code (a delivery-code bypass path, and a real stuck-in-transit dead-end) |
-| Demo script | ✅ `Reflex_Demo_Script.docx` |
-| Timing log from ≥2 dry runs | ⚠️ **Not complete — in progress honestly.** `TIMING_LOG.md` and `CRITIQUE_TRACKER.md` contain two real rehearsed segments (cold open, trade-offs triplet) from a chat-based practice session, plus one full run-through that surfaced real gaps (problem framing and the close were skipped). No full timed dry run has happened yet. The blank rows are genuinely blank, waiting for real stopwatch numbers — not filled with invented data. |
+| Frozen build / documented design | ✅ Current build is deployed to Render and the core delivery lifecycle has been verified live. The build includes delivery codes, server-side delivery confirmation enforcement, rider ratings, stuck-in-transit handling, dispatcher reassignment after failure, offline idempotency, WebSocket updates, and automatic schema initialization/migrations. |
+| Deck (Problem→Solution→Architecture→Trade-offs→Roadmap, one takeaway/slide) | ⚠️ Current source content has been reworked here, but `Reflex_Executive_Deck.pptx` must be regenerated so it no longer describes the earlier pre-enforcement/pre-reassignment build. |
+| One-page trade-off log, 3+ weak points, "acceptable because…" | ⚠️ `TRADEOFFS.md` must be kept aligned with the current implementation; the old entries describing a direct delivery-code bypass and an unrecoverable `STUCK_IN_TRANSIT` state are no longer accurate. |
+| Demo script | ⚠️ Keep `Reflex_Demo_Script.docx` aligned with the current successful delivery-code and failed-delivery reassignment flow. |
+| Timing log from ≥2 dry runs | ⚠️ Not complete — still requires two real timed presentation rehearsals. |
+
+---
+
+## Current implementation evidence
+
+The production workflow now supports and has been manually verified end-to-end:
+
+1. Retailer creates a delivery request.
+2. Server generates a unique customer delivery code.
+3. Dispatcher assigns a rider.
+4. Rider picks up the request.
+5. Rider completes delivery through the delivery-code confirmation path.
+6. A rider can report a failed delivery.
+7. Dispatcher can reassign a failed request.
+8. The reassigned rider can pick up and complete the request.
+
+The key state-machine protections are server-side: direct `DELIVERED` bypasses are rejected, and `STUCK_IN_TRANSIT` can recover through `FAILED` or delivery-code confirmation.
 
 ---
 
 ## Format: solo
 
-Defense is solo. Every slide, every question, every segment of the demo is
-yours — no ownership split, no question routing to plan. The demo script
-and deck are already written in first-person singular throughout, so no
-changes were needed there. The only implication for rehearsal: since there's
-no second presenter to share the 10 minutes with, the full budget in
-`Reflex_Timing_Log.xlsx` is your pacing to own end to end — practice the
-segment transitions (demo → slide → demo) so they don't create dead air
-while you're switching screens or windows solo.
+Defense is solo. Every slide, every question, every segment of the demo is yours — no ownership split and no question routing to plan. The deck and demo should remain in first-person singular throughout. The full 10-minute budget is your pacing to own end to end, so practice the segment transitions (demo → slide → demo) without creating dead air while switching screens.
