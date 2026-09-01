@@ -9,7 +9,7 @@
   let decorateTimer = null;
 
   function escapeHtml(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&': '&lt;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   function showToast(title, message) {
@@ -173,10 +173,14 @@
     }, 0);
   }
 
-  function startAssignmentNotifications() {
+  function stopAssignmentNotifications() {
     if (assignmentSocket) { try { assignmentSocket.close(); } catch (_) {} assignmentSocket = null; }
     if (assignmentPoller) { clearInterval(assignmentPoller); assignmentPoller = null; }
     lastAssignmentSnapshot = new Map();
+  }
+
+  function startAssignmentNotifications() {
+    stopAssignmentNotifications();
     if (!state.user || state.user.role !== 'dispatcher' || !state.token) return;
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -194,6 +198,7 @@
           } catch (_) {}
         };
         assignmentSocket.onclose = () => {
+          assignmentSocket = null;
           if (state.token && state.user && state.user.role === 'dispatcher') setTimeout(connect, 3000);
         };
       } catch (_) {}
@@ -225,11 +230,23 @@
   const observer = new MutationObserver(scheduleDecorate);
   observer.observe(document.getElementById('app'), { childList: true, subtree: true });
   scheduleDecorate();
-  if (state.user) startAssignmentNotifications();
+
+  // Detect login/logout transitions without replacing app.js's lexical
+  // lifecycle functions. This keeps dispatcher notifications reliable after
+  // a fresh login as well as after a page reload.
+  const lifecyclePoller = setInterval(() => {
+    if (state.user && state.user.role === 'dispatcher' && state.token && !assignmentSocket) {
+      startAssignmentNotifications();
+    }
+    if ((!state.user || state.user.role !== 'dispatcher' || !state.token) && (assignmentSocket || assignmentPoller)) {
+      stopAssignmentNotifications();
+    }
+    scheduleDecorate();
+  }, 1500);
 
   window.addEventListener('beforeunload', () => {
-    if (assignmentSocket) { try { assignmentSocket.close(); } catch (_) {} }
-    if (assignmentPoller) clearInterval(assignmentPoller);
+    clearInterval(lifecyclePoller);
+    stopAssignmentNotifications();
   });
 
   const style = document.createElement('style');
