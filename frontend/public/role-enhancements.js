@@ -46,10 +46,7 @@
     try {
       const data = await api('/deliveries/riders');
       state.riders = data.riders;
-    } catch (err) {
-      alert(err.message);
-      return;
-    }
+    } catch (err) { alert(err.message); return; }
     state.modal = { type: 'reassign', requestId };
     render();
   };
@@ -107,9 +104,30 @@
     return originalRenderModal();
   };
 
-  // Dispatcher notification fallback: poll every 8 seconds and announce a
-  // newly assigned rider with name and phone. WebSocket updates still refresh
-  // the board immediately; polling protects the notification if WS reconnects.
+  // Immediate dispatcher notification over a dedicated WebSocket. The main
+  // app socket refreshes data; this socket gives the dispatcher a clear toast
+  // containing the newly assigned rider and phone number.
+  function connectAssignmentSocket() {
+    if (!state.user || state.user.role !== 'dispatcher' || !state.token) return;
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/ws?token=${state.token}`);
+    ws.onmessage = async (msg) => {
+      try {
+        const data = JSON.parse(msg.data);
+        if (data.type === 'assignment_notification' && data.rider) {
+          showToast(
+            data.reassigned ? 'Rider reassigned' : 'Rider assigned',
+            `Order #${String(data.delivery_request_id).padStart(6,'0')}: ${data.rider.name} · ${data.rider.phone}`
+          );
+          await loadRequests();
+        }
+      } catch (_) {}
+    };
+    ws.onclose = () => { if (state.token && state.user && state.user.role === 'dispatcher') setTimeout(connectAssignmentSocket, 3000); };
+  }
+  connectAssignmentSocket();
+
+  // Polling fallback for notification if the dedicated socket is reconnecting.
   if (state.user && state.user.role === 'dispatcher') {
     setInterval(async () => {
       try {
@@ -133,6 +151,5 @@
     .assigned-rider{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 14px;padding:9px 10px;background:#F7F6F5;border-top:1px solid var(--line);font-size:12px}.assigned-rider strong{width:100%;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#706C67}.assigned-rider .mono{color:#706C67}.enhancement-actions{padding-top:0}.reflex-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:1000;width:min(92vw,420px);background:#231F20;color:#fff;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.18);transition:.2s ease;display:flex;flex-direction:column;gap:4px;font-family:Inter,system-ui,sans-serif}.reflex-toast.show{opacity:1;transform:translate(-50%,0)}.reflex-toast strong{font-size:13px}.reflex-toast span{font-size:12px;opacity:.86}.modal-sheet textarea{width:100%;padding:12px;border:1px solid #C9C6C2;border-radius:0;font:15px Inter,system-ui,sans-serif;resize:vertical}
   `;
   document.head.appendChild(style);
-
   if (state.user) render();
 })();
