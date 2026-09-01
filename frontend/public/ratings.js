@@ -4,32 +4,42 @@
   let riderSummaries = new Map();
   let refreshTimer = null;
 
-  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
-  function stars(value) {
-    const n = Math.round(Number(value) || 0);
-    return '★'.repeat(n) + '☆'.repeat(5 - n);
+  function session() {
+    try { return { user: JSON.parse(localStorage.getItem('reflex_user') || 'null'), token: localStorage.getItem('reflex_token') || '' }; }
+    catch (e) { return { user: null, token: '' }; }
   }
+  async function api(path, options = {}) {
+    const s = session();
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (s.token) headers.Authorization = `Bearer ${s.token}`;
+    const res = await fetch('/api' + path, { ...options, headers, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  }
+  function stars(value) { const n = Math.max(0, Math.min(5, Math.round(Number(value) || 0))); return '★'.repeat(n) + '☆'.repeat(5 - n); }
   function ratingText(r) { return r == null ? 'No ratings yet' : `${Number(r).toFixed(1)} / 5`; }
 
   async function loadRiderSummary() {
-    if (!window.state?.user || state.user.role !== 'rider') return;
-    try {
-      riderSummary = await window.api('/ratings/rider/' + state.user.id);
-      renderRiderSummary();
-    } catch (e) { console.warn('[reflex] rider rating load failed:', e.message); }
+    const s = session();
+    if (!s.user || s.user.role !== 'rider') return;
+    try { riderSummary = await api('/ratings/rider/' + s.user.id); renderRiderSummary(); }
+    catch (e) { console.warn('[reflex] rider rating load failed:', e.message); }
   }
 
   async function loadDispatcherRiders() {
-    if (!window.state?.user || state.user.role !== 'dispatcher') return;
+    const s = session();
+    if (!s.user || s.user.role !== 'dispatcher') return;
     try {
-      const data = await window.api('/ratings/riders');
+      const data = await api('/ratings/riders');
       riderSummaries = new Map(data.riders.map(r => [Number(r.id), r]));
       decorateRiderSelectors();
     } catch (e) { console.warn('[reflex] rider rating list failed:', e.message); }
   }
 
   function renderRiderSummary() {
-    if (!window.state?.user || state.user.role !== 'rider' || !riderSummary) return;
+    const s = session();
+    if (!s.user || s.user.role !== 'rider' || !riderSummary) return;
     const app = document.getElementById('app');
     if (!app || app.querySelector('.reflex-rider-rating-card')) return;
     const card = document.createElement('div');
@@ -40,7 +50,8 @@
   }
 
   function decorateRiderSelectors() {
-    if (!window.state?.user || state.user.role !== 'dispatcher') return;
+    const s = session();
+    if (!s.user || s.user.role !== 'dispatcher') return;
     document.querySelectorAll('select').forEach(select => {
       Array.from(select.options).forEach(option => {
         const rider = riderSummaries.get(Number(option.value));
@@ -52,19 +63,22 @@
   }
 
   function decorateDispatcherTickets() {
-    if (!window.state?.user || state.user.role !== 'dispatcher' || !Array.isArray(state.requests)) return;
+    const s = session();
+    if (!s.user || s.user.role !== 'dispatcher') return;
     document.querySelectorAll('.ticket').forEach(ticket => {
       if (ticket.querySelector('.reflex-rate-rider')) return;
       const idEl = ticket.querySelector('.ticket-id');
       const match = idEl && idEl.textContent.match(/#(\d+)/);
       if (!match) return;
-      const request = state.requests.find(r => Number(r.id) === Number(match[1]));
-      if (!request || request.current_status !== 'DELIVERED' || !request.rider_id) return;
+      const deliveryId = Number(match[1]);
+      // Use the rendered ticket status so this works even when the app re-renders.
+      const status = ticket.querySelector('.ticket-status')?.textContent.trim().replace(/\s+/g, '_');
+      if (status !== 'DELIVERED') return;
       const body = ticket.querySelector('.ticket-body');
       if (!body) return;
       const panel = document.createElement('div');
       panel.className = 'reflex-rate-rider';
-      panel.innerHTML = `<div class="reflex-rate-title">Rate this rider</div><div class="reflex-rate-buttons">${[1,2,3,4,5].map(n => `<button type="button" aria-label="${n} star${n > 1 ? 's' : ''}" onclick="window.submitRiderRating(${request.id}, ${n}, this)">★</button>`).join('')}</div><div class="reflex-rate-note">One rating per delivered order.</div>`;
+      panel.innerHTML = `<div class="reflex-rate-title">Rate this rider</div><div class="reflex-rate-buttons">${[1,2,3,4,5].map(n => `<button type="button" aria-label="${n} star${n > 1 ? 's' : ''}" onclick="window.submitRiderRating(${deliveryId}, ${n}, this)">★</button>`).join('')}</div><div class="reflex-rate-note">One rating per delivered order.</div>`;
       body.appendChild(panel);
     });
   }
@@ -75,22 +89,17 @@
     panel.dataset.submitting = '1';
     try {
       const comment = window.prompt('Optional comment about the rider (leave blank to skip):', '') || '';
-      await window.api('/ratings/deliveries/' + deliveryId, { method: 'POST', body: { rating, comment } });
+      await api('/ratings/deliveries/' + deliveryId, { method: 'POST', body: { rating, comment } });
       panel.innerHTML = `<div class="reflex-rate-success">${stars(rating)}<br><strong>Rating submitted</strong></div>`;
       await loadDispatcherRiders();
-    } catch (e) {
-      panel.dataset.submitting = '0';
-      alert(e.message);
-    }
+    } catch (e) { panel.dataset.submitting = '0'; alert(e.message); }
   };
 
   function refresh() {
-    if (!window.state?.user) return;
-    if (state.user.role === 'rider') loadRiderSummary();
-    if (state.user.role === 'dispatcher') {
-      loadDispatcherRiders();
-      decorateDispatcherTickets();
-    }
+    const s = session();
+    if (!s.user) return;
+    if (s.user.role === 'rider') loadRiderSummary();
+    if (s.user.role === 'dispatcher') { loadDispatcherRiders(); decorateDispatcherTickets(); }
   }
 
   function observe() {
@@ -99,13 +108,13 @@
     const observer = new MutationObserver(() => {
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
-        if (state.user?.role === 'dispatcher') { decorateDispatcherTickets(); decorateRiderSelectors(); }
-        if (state.user?.role === 'rider') renderRiderSummary();
-      }, 50);
+        const s = session();
+        if (s.user?.role === 'dispatcher') { decorateDispatcherTickets(); decorateRiderSelectors(); }
+        if (s.user?.role === 'rider') renderRiderSummary();
+      }, 75);
     });
     observer.observe(app, { childList: true, subtree: true });
     refresh();
   }
-
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe); else observe();
 })();
