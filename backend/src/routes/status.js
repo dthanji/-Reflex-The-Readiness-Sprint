@@ -12,8 +12,7 @@ const VALID_TRANSITIONS = {
 
 // Rider posts a status update. Includes client_event_id so that if the
 // PWA queued this offline and retries it after reconnecting, the server
-// dedupes instead of writing the same transition twice (edge case:
-// duplicate submission from an unreliable connection).
+// dedupes instead of writing the same transition twice.
 router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) => {
   const { requestId } = req.params;
   const { status, client_event_id, metadata } = req.body;
@@ -37,8 +36,6 @@ router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) =
       }
     }
 
-    // Lock the base table (see assignments.js note re: views + FOR UPDATE),
-    // then read the derived current status separately.
     const lockRes = await client.query(
       'SELECT * FROM delivery_requests WHERE id = $1 FOR UPDATE',
       [requestId]
@@ -47,6 +44,7 @@ router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) =
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Delivery request not found' });
     }
+
     const stateRes = await client.query(
       'SELECT * FROM delivery_request_state WHERE id = $1',
       [requestId]
@@ -74,9 +72,7 @@ router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) =
     );
 
     await client.query('COMMIT');
-
     hub.broadcastStatusEvent(eventRows[0], { retailerId: current.retailer_id, riderId: current.rider_id });
-
     res.status(201).json({ event: eventRows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -87,24 +83,76 @@ router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) =
   }
 });
 
-// QR scan confirmation at delivery. Trade-off logged: this confirms a
-// scan happened, not independently that the right parcel reached the
-// right person — no photo/signature evidence layer yet.
+// QR scan confirmation. A successful confirmation is the actual delivery
+// event: record the scan and append DELIVERED atomically so the UI cannot
+// report a successful scan while leaving the order stuck at PICKED_UP.
 router.post('/:requestId/confirm', requireAuth, requireRole('rider'), async (req, res) => {
   const { requestId } = req.params;
   const { qr_payload } = req.body;
   if (!qr_payload) return res.status(400).json({ error: 'qr_payload is required' });
 
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+
+    const lockRes = await client.query(
+      'SELECT * FROM delivery_requests WHERE id = $1 FOR UPDATE',
+      [requestId]
+    );
+    if (lockRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Delivery request not found' });
+    }
+
+    const stateRes = await client.query(
+      'SELECT * FROM delivery_request_state WHERE id = $1',
+      [requestId]
+    );
+    const current = stateRes.rows[0];
+
+    if (current.rider_id !== req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'This request is not assigned to you' });
+    }
+
+    if (current.current_status !== 'PICKED_UP') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `Delivery confirmation requires PICKED_UP status; current status is ${current.current_status}`,
+        current_status: current.current_status,
+      });
+    }
+
+    const confirmationRes = await client.query(
       `INSERT INTO delivery_confirmations (delivery_request_id, qr_payload, scanned_by)
        VALUES ($1, $2, $3) RETURNING *`,
       [requestId, qr_payload, req.user.id]
     );
-    res.status(201).json({ confirmation: rows[0] });
+
+    const eventRes = await client.query(
+      `INSERT INTO status_events (delivery_request_id, status, actor_id, metadata)
+       VALUES ($1, 'DELIVERED', $2, $3) RETURNING *`,
+      [requestId, req.user.id, JSON.stringify({ confirmation_id: confirmationRes.rows[0].id, qr_confirmed: true })]
+    );
+
+    await client.query('COMMIT');
+
+    hub.broadcastStatusEvent(eventRes.rows[0], {
+      retailerId: current.retailer_id,
+      riderId: current.rider_id,
+    });
+
+    res.status(201).json({
+      confirmation: confirmationRes.rows[0],
+      event: eventRes.rows[0],
+      status: 'DELIVERED',
+    });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Internal error' });
+  } finally {
+    client.release();
   }
 });
 
