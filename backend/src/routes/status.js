@@ -13,7 +13,6 @@ const VALID_TRANSITIONS = {
 router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) => {
   const { requestId } = req.params;
   const { status, client_event_id, metadata } = req.body;
-
   if (!['PICKED_UP', 'DELIVERED', 'FAILED'].includes(status)) return res.status(400).json({ error: 'status must be PICKED_UP, DELIVERED, or FAILED' });
 
   const client = await pool.connect();
@@ -44,7 +43,7 @@ router.post('/:requestId', requireAuth, requireRole('rider'), async (req, res) =
 
 // QR/manual delivery confirmation. The server-generated delivery code is
 // globally unique and is valid only for the delivery whose code was entered.
-// A successful confirmation atomically records the proof and appends DELIVERED.
+// Invalid, cross-order, or already-used codes fail before any status change.
 router.post('/:requestId/confirm', requireAuth, requireRole('rider'), async (req, res) => {
   const { requestId } = req.params;
   const rawCode = req.body.qr_payload;
@@ -60,30 +59,22 @@ router.post('/:requestId/confirm', requireAuth, requireRole('rider'), async (req
     const current = stateRes.rows[0];
 
     if (current.rider_id !== req.user.id) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'This request is not assigned to you' }); }
-    if (current.current_status !== 'PICKED_UP') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: `Delivery confirmation requires PICKED_UP status; current status is ${current.current_status}`, current_status: current.current_status });
-    }
 
-    // The code must exist and belong to this exact delivery. A code from
-    // another order is never accepted, even if it is a real Reflex code.
-    const codeCheck = await client.query(
-      'SELECT id FROM delivery_requests WHERE delivery_code = $1',
-      [qrPayload]
-    );
+    const codeCheck = await client.query('SELECT id FROM delivery_requests WHERE delivery_code = $1', [qrPayload]);
     if (!codeCheck.rows.length || Number(codeCheck.rows[0].id) !== Number(requestId)) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invalid delivery code. The code does not match this delivery.' });
     }
 
-    // Prevent a delivery code from being reused as a second confirmation.
-    const priorUse = await client.query(
-      'SELECT id FROM delivery_confirmations WHERE qr_payload = $1 LIMIT 1',
-      [qrPayload]
-    );
+    const priorUse = await client.query('SELECT id FROM delivery_confirmations WHERE qr_payload = $1 LIMIT 1', [qrPayload]);
     if (priorUse.rows.length > 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invalid delivery code. This code has already been used.' });
+    }
+
+    if (current.current_status !== 'PICKED_UP') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Delivery confirmation requires PICKED_UP status; current status is ${current.current_status}`, current_status: current.current_status });
     }
 
     const confirmationRes = await client.query(
