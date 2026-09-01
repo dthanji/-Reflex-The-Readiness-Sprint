@@ -19,7 +19,7 @@
   }
 
   function decorateRetailerCodes() {
-    if (!window.state || !state.user || state.user.role !== 'retailer' || !Array.isArray(state.requests)) return;
+    if (typeof state === 'undefined' || !state.user || state.user.role !== 'retailer' || !Array.isArray(state.requests)) return;
     document.querySelectorAll('.ticket').forEach(ticket => {
       if (ticket.querySelector('.reflex-delivery-code')) return;
       const idEl = ticket.querySelector('.ticket-id');
@@ -53,6 +53,10 @@
   document.addEventListener('input', event => {
     if (event.target && event.target.id === 'manual-qr-input') normalizeManualCode();
   });
+
+  const style = document.createElement('style');
+  style.textContent = `.reflex-delivery-code{margin:10px 14px;padding:11px 12px;background:#F7F6F5;border:1px solid var(--line);display:flex;flex-direction:column;gap:4px}.reflex-delivery-code strong{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#706C67}.reflex-delivery-code span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em}.reflex-delivery-code small{font-size:11px;color:#8A8A7E}.reflex-invalid-code{color:#BA0C2F;font-size:12px;margin-top:6px}`;
+  document.head.appendChild(style);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe);
   else observe();
