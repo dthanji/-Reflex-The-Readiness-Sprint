@@ -5,7 +5,7 @@
   let lastDispatcherSnapshot = null;
 
   function escapeHtml(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   }
 
   function showToast(title, message) {
@@ -42,7 +42,14 @@
     } catch (err) { alert(err.message); }
   };
 
-  window.openReassignModal = function (requestId) {
+  window.openReassignModal = async function (requestId) {
+    try {
+      const data = await api('/deliveries/riders');
+      state.riders = data.riders;
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
     state.modal = { type: 'reassign', requestId };
     render();
   };
@@ -57,59 +64,23 @@
   };
 
   window.renderTicket = function (r) {
-    const base = originalRenderTicket(r);
-    const role = state.user.role;
-    let extra = '';
-
-    if (r.rider_id && r.rider_name) {
-      extra = `<div class="assigned-rider"><strong>Assigned rider</strong><span>${escapeHtml(r.rider_name)}</span><span class="mono">${escapeHtml(r.rider_phone || '')}</span></div>`;
-    }
-
-    if (role === 'retailer' && r.current_status === 'FAILED') {
-      extra += `<div class="ticket-actions enhancement-actions"><button class="btn amber" onclick="openReassignModal(${r.id})">Change delivery person</button></div>`;
-    }
-
-    if (role === 'rider' && ['ASSIGNED', 'PICKED_UP'].includes(r.current_status)) {
-      const issueButton = `<button class="btn secondary" onclick="openIssueModal(${r.id})">Report delivery issue</button>`;
-      const marker = '<div class="ticket-actions">';
-      if (base.includes(marker)) {
-        const idx = base.lastIndexOf('</div>');
-        // Append a second action block after the existing rider action.
-        return base.replace(/(\s*<\/div>\s*)$/, '') + `<div class="ticket-actions enhancement-actions">${issueButton}</div></div>`;
-      }
-      extra += `<div class="ticket-actions enhancement-actions">${issueButton}</div>`;
-    }
-
-    if (extra) {
-      const bodyClose = base.indexOf('</div>\n      ${expanded');
-      // Insert rider information immediately before the ticket action area.
-      const actionIndex = base.lastIndexOf('${actions}');
-      return base.replace(/(\s*<\/div>\s*\n\s*\$\{actions\})/, `${extra}$1`);
-    }
-    return base;
-  };
-
-  // Safer replacement of renderTicket: the wrapper above is intentionally
-  // complemented by a direct card decorator using the original output.
-  const wrappedRenderTicket = window.renderTicket;
-  window.renderTicket = function (r) {
     let html = originalRenderTicket(r);
     const role = state.user.role;
     const riderBlock = r.rider_id && r.rider_name
       ? `<div class="assigned-rider"><strong>Assigned rider</strong><span>${escapeHtml(r.rider_name)}</span><span class="mono">${escapeHtml(r.rider_phone || '')}</span></div>` : '';
-    const issueBlock = role === 'rider' && ['ASSIGNED','PICKED_UP'].includes(r.current_status)
+    const issueBlock = role === 'rider' && ['ASSIGNED', 'PICKED_UP'].includes(r.current_status)
       ? `<div class="ticket-actions enhancement-actions"><button class="btn secondary" onclick="openIssueModal(${r.id})">Report delivery issue</button></div>` : '';
     const reassignBlock = role === 'retailer' && r.current_status === 'FAILED'
       ? `<div class="ticket-actions enhancement-actions"><button class="btn amber" onclick="openReassignModal(${r.id})">Change delivery person</button></div>` : '';
-    const insertBeforeActions = html.lastIndexOf('</div>\n  ');
-    if (riderBlock || issueBlock || reassignBlock) {
-      const actionStart = html.lastIndexOf('<div class="ticket-actions">');
-      if (actionStart >= 0) html = html.slice(0, actionStart) + riderBlock + html.slice(actionStart);
-      else html = html.replace(/(\s*<\/div>\s*\n\s*<\/div>\s*$)/, `${riderBlock}${issueBlock}${reassignBlock}$1`);
-      if (issueBlock || reassignBlock) {
-        const lastClose = html.lastIndexOf('</div>\n  ');
-        html = html.slice(0, lastClose) + `${issueBlock}${reassignBlock}` + html.slice(lastClose);
-      }
+
+    const actionIndex = html.indexOf('<div class="ticket-actions">');
+    if (actionIndex >= 0) {
+      html = html.slice(0, actionIndex) + riderBlock + html.slice(actionIndex);
+      const outerClose = html.lastIndexOf('</div>\n    </div>');
+      if (issueBlock || reassignBlock) html = html.slice(0, outerClose) + issueBlock + reassignBlock + html.slice(outerClose);
+    } else if (riderBlock || reassignBlock) {
+      const outerClose = html.lastIndexOf('</div>\n    </div>');
+      html = html.slice(0, outerClose) + riderBlock + reassignBlock + html.slice(outerClose);
     }
     return html;
   };
@@ -128,7 +99,7 @@
       const options = state.riders.map(r => `<div class="rider-option" onclick="reassignRider(${state.modal.requestId}, ${r.id})"><span>${escapeHtml(r.name)}</span><span class="mono" style="color:#8A8A7E;">${escapeHtml(r.phone)}</span></div>`).join('');
       return `<div class="modal-backdrop" onclick="if(event.target===this) closeModal()"><div class="modal-sheet">
         <h3>Change delivery person</h3>
-        <p style="font-size:13px;color:#706C67;line-height:1.5;">This option is available because the current rider reported a delivery issue.</p>
+        <p style="font-size:13px;color:#706C67;line-height:1.5;">The current rider reported a delivery issue. Select a replacement rider.</p>
         ${options || '<p style="color:#8A8A7E;font-size:13px;">No riders registered.</p>'}
         <button class="btn secondary" style="margin-top:8px;" onclick="closeModal()">Cancel</button>
       </div></div>`;
@@ -136,18 +107,20 @@
     return originalRenderModal();
   };
 
-  // Dispatcher notification: poll as a reliable fallback even if a WebSocket
-  // reconnect is in progress. It detects newly assigned rider/name/phone.
+  // Dispatcher notification fallback: poll every 8 seconds and announce a
+  // newly assigned rider with name and phone. WebSocket updates still refresh
+  // the board immediately; polling protects the notification if WS reconnects.
   if (state.user && state.user.role === 'dispatcher') {
     setInterval(async () => {
       try {
         const data = await api('/deliveries');
-        const previous = lastDispatcherSnapshot || new Map();
         const next = new Map(data.requests.map(r => [r.id, `${r.current_status}|${r.rider_id || ''}`]));
-        for (const r of data.requests) {
-          const signature = `${r.current_status}|${r.rider_id || ''}`;
-          if (r.current_status === 'ASSIGNED' && r.rider_id && previous.get(r.id) !== signature && r.rider_name) {
-            showToast('Rider assigned', `Order #${String(r.id).padStart(6,'0')}: ${r.rider_name} · ${r.rider_phone || 'No phone on file'}`);
+        if (lastDispatcherSnapshot) {
+          for (const r of data.requests) {
+            const signature = `${r.current_status}|${r.rider_id || ''}`;
+            if (r.current_status === 'ASSIGNED' && r.rider_id && lastDispatcherSnapshot.get(r.id) !== signature && r.rider_name) {
+              showToast('Rider assigned', `Order #${String(r.id).padStart(6,'0')}: ${r.rider_name} · ${r.rider_phone || 'No phone on file'}`);
+            }
           }
         }
         lastDispatcherSnapshot = next;
@@ -161,7 +134,5 @@
   `;
   document.head.appendChild(style);
 
-  // Re-render once this enhancement layer has loaded, because app.js renders
-  // before this file is evaluated.
   if (state.user) render();
 })();
