@@ -1,0 +1,37 @@
+name: Reset Database (destructive)
+
+# Manually triggered only — never runs automatically. This wipes and
+# recreates every table by re-running backend/schema.sql (which starts
+# with DROP TABLE ... CASCADE for each table), so all data is lost.
+# Requires typing an exact confirmation phrase to reduce the chance of
+# an accidental click doing something irreversible.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESET-DATABASE to confirm — this deletes all data'
+        required: true
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation phrase
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "RESET-DATABASE" ]; then
+            echo "Confirmation text did not match exactly. Aborting without touching the database."
+            exit 1
+          fi
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Ensure psql is available
+        run: which psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+
+      - name: Apply schema (drops and recreates all tables)
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+        run: |
+          psql "$DATABASE_URL" -f backend/schema.sql
