@@ -34,10 +34,10 @@ Prepared using State → Context → Evidence. Organized by the four panel categ
 **Context:** True three-way merge UI is a lot of design for an edge case. I chose safe failure over silent corruption. The rider sees a generic error today; with more time I’d surface a "this changed while you were offline" screen.  
 **Evidence:** `TRADEOFFS.md` item #2. In testing, I marked a request `PICKED_UP` offline, then marked it `DELIVERED` from another session, then reconnected — the queued `PICKED_UP` was rejected cleanly, and the append-only log shows no illegal transition.
 
-### Q: A QR scan doesn’t prove the right person got the parcel.
-**State:** Correct — it proves a scan happened, not chain-of-custody. I accepted this because it’s already a major step up from a WhatsApp voice note saying "delivered."  
-**Context:** Photo capture or customer PIN would require additional scope (camera permissions, storage, SMS integration) that is a v2 problem, not a v1 blocker.  
-**Evidence:** `TRADEOFFS.md` item #3. The `delivery_confirmations` table records the scan event with timestamp and actor, which is a concrete, queryable proof-of-delivery signal that didn’t exist before.
+### Q: A delivery code doesn't prove the right person got the parcel — and can it even be bypassed?
+**State:** Both are true. The code is validated against the specific request and against reuse, which is real, but there's still no photo or independent check tying it to the actual customer — and the plain status endpoint still allows a direct `PICKED_UP → DELIVERED` transition with no code check at all, so enforcement currently depends on the frontend, not the server.
+**Context:** I found the bypass gap myself while updating these docs against the actual code, not from a panel question — which is exactly the posture I want walking in: I'd rather be the one who found it.
+**Evidence:** `TRADEOFFS.md` item #3. The fix is small and specific: either drop `DELIVERED` from `PICKED_UP`'s valid transitions on the plain endpoint, or require the code there too — not a redesign, a few lines.
 
 ---
 

@@ -91,9 +91,9 @@ the log just gives you a place to prove it happened.
 
 | Item | Status |
 |---|---|
-| Frozen build / documented design | ✅ Full working repo — backend, PWA, live-tested. The repo had shipped with a broken folder structure (flat files, `require()` paths pointing to folders that didn't exist, and a missing auth middleware file that got silently overwritten during upload) — this has been fixed and re-verified: fresh install, fresh database, server boots clean, register/login/protected-route/static-file-serving all confirmed working end to end. |
-| Deck (Problem→Solution→Architecture→Trade-offs→Roadmap, one takeaway/slide) | ✅ `Reflex_Executive_Deck.pptx`, 12 slides |
-| One-page trade-off log, 3+ weak points, "acceptable because…" | ✅ `TRADEOFFS.md` |
+| Frozen build / documented design | ✅ Full working repo — backend, PWA, live-tested and deployed to Render. Since the fixes described above, the build grew further: delivery codes, rider ratings, stuck-in-transit detection, and dispatcher reassignment were added, plus automatic schema init/migration on boot and a GitHub Actions workflow for resetting the deployed database without local tools. |
+| Deck (Problem→Solution→Architecture→Trade-offs→Roadmap, one takeaway/slide) | ⚠️ `Reflex_Executive_Deck.pptx`, 12 slides — **written before the ratings/delivery-code/stuck-in-transit features existed, so it describes an earlier version of the build.** The `.md` docs (`ARCHITECTURE.md`, `TRADEOFFS.md`, `ANTICIPATED_QA.md`) have been updated to match the current code; the deck has not. Worth deciding whether to update it or address the gap live if a panelist asks about a feature the deck doesn't mention. |
+| One-page trade-off log, 3+ weak points, "acceptable because…" | ✅ `TRADEOFFS.md` — now 5 weak points, including two found by reviewing the newer code (a delivery-code bypass path, and a real stuck-in-transit dead-end) |
 | Demo script | ✅ `Reflex_Demo_Script.docx` |
 | Timing log from ≥2 dry runs | ⚠️ **Not complete — in progress honestly.** `TIMING_LOG.md` and `CRITIQUE_TRACKER.md` contain two real rehearsed segments (cold open, trade-offs triplet) from a chat-based practice session, plus one full run-through that surfaced real gaps (problem framing and the close were skipped). No full timed dry run has happened yet. The blank rows are genuinely blank, waiting for real stopwatch numbers — not filled with invented data. |
 
