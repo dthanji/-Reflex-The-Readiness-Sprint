@@ -13,10 +13,6 @@ const assignmentRoutes = require('./routes/assignments');
 const statusRoutes = require('./routes/status');
 const wsHub = require('./websocket/hub');
 
-// TEMPORARY DIAGNOSTIC — remove once DATABASE_URL connectivity is confirmed
-// working in production. Prints only presence/shape of required env vars,
-// never any actual substring of a secret value, so this is safe to leave
-// in logs temporarily but shouldn't stay in the codebase long-term.
 const dbUrl = process.env.DATABASE_URL || '';
 console.log('[reflex][diagnostic] DATABASE_URL present:', !!dbUrl,
   'length:', dbUrl.length,
@@ -29,22 +25,9 @@ console.log('[reflex][diagnostic] PORT:', process.env.PORT);
 const app = express();
 
 // Render runs the application behind a reverse proxy and forwards the
-// original client IP in X-Forwarded-For. Trust the single proxy hop so
-// Express and express-rate-limit can safely identify the real client IP.
+// original client IP in X-Forwarded-For. Trust the single proxy hop.
 app.set('trust proxy', 1);
 
-// CORS: restricted to an explicit allowlist via ALLOWED_ORIGINS (comma-
-// separated), not wide open. Two cases are always allowed regardless of
-// that allowlist:
-//   1. Requests with no Origin header (curl, mobile PWA shell) — not a
-//      cross-origin browser risk.
-//   2. Same-origin requests — the browser includes an Origin header on
-//      state-changing requests (POST/PUT/DELETE) even when the request
-//      targets the same host the page was loaded from, not just on truly
-//      cross-origin calls. Since this backend also serves the PWA frontend
-//      itself, that's the normal case, not an edge case — comparing the
-//      Origin header's host against the request's own Host header handles
-//      it correctly without requiring ALLOWED_ORIGINS to be set at all.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())
@@ -67,7 +50,6 @@ app.use(cors((req, callback) => {
   }
 }));
 
-// Turn a CORS rejection into a clean 403 instead of leaking a stack trace as a 500.
 app.use((err, req, res, next) => {
   if (err && err.message && err.message.startsWith('Origin ') && err.message.endsWith('not allowed by CORS')) {
     return res.status(403).json({ error: 'Origin not allowed' });
@@ -77,17 +59,15 @@ app.use((err, req, res, next) => {
 
 app.use(express.json());
 
-// Rate limit auth endpoints specifically — these are the brute-force targets.
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                  // 20 attempts per IP per window
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many auth attempts. Try again later.' },
 });
 app.use('/api/auth', authLimiter);
 
-// Lighter general limiter across the rest of the API.
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 120,
@@ -104,10 +84,8 @@ app.use('/api/status', statusRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Serve the PWA frontend as static files.
 app.use(express.static(path.join(__dirname, '..', '..', 'frontend', 'public')));
 
-// Final catch-all: never leak a raw stack trace to the client.
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(err.status || 500).json({ error: 'Internal server error' });
@@ -134,11 +112,77 @@ async function initializeDatabase() {
   console.log('[reflex] Database schema initialized.');
 }
 
+// Upgrade databases created before STUCK_IN_TRANSIT was introduced.
+async function ensureSchemaUpgrades() {
+  await pool.query("ALTER TYPE delivery_status ADD VALUE IF NOT EXISTS 'STUCK_IN_TRANSIT'");
+}
+
+// Every 15 minutes, automatically flag a delivery that has remained in
+// PICKED_UP for more than 24 hours without a delivery confirmation.
+// The event is append-only, so the audit trail records exactly when Reflex
+// declared the delivery stuck and why.
+async function markStuckInTransit() {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT latest.delivery_request_id,
+              latest.actor_id AS rider_id,
+              dr.retailer_id
+       FROM (
+         SELECT DISTINCT ON (se.delivery_request_id)
+                se.delivery_request_id, se.status, se.actor_id, se.created_at
+         FROM status_events se
+         ORDER BY se.delivery_request_id, se.created_at DESC
+       ) latest
+       JOIN delivery_requests dr ON dr.id = latest.delivery_request_id
+       WHERE latest.status = 'PICKED_UP'
+         AND latest.created_at <= now() - interval '24 hours'`
+    );
+
+    for (const delivery of rows) {
+      const eventRes = await client.query(
+        `INSERT INTO status_events (delivery_request_id, status, actor_id, metadata)
+         SELECT $1, 'STUCK_IN_TRANSIT', $2, $3
+         WHERE NOT EXISTS (
+           SELECT 1 FROM status_events
+           WHERE delivery_request_id = $1 AND status = 'STUCK_IN_TRANSIT'
+             AND created_at > now() - interval '25 hours'
+         )
+         RETURNING *`,
+        [
+          delivery.delivery_request_id,
+          delivery.rider_id,
+          JSON.stringify({
+            automatic: true,
+            reason: 'No delivery confirmation within 24 hours of pickup',
+            threshold_hours: 24,
+          }),
+        ]
+      );
+
+      if (eventRes.rows.length > 0) {
+        console.log(`[reflex] Order ${delivery.delivery_request_id} marked STUCK_IN_TRANSIT after 24 hours without confirmation.`);
+        hub.broadcastStatusEvent(eventRes.rows[0], {
+          retailerId: delivery.retailer_id,
+          riderId: delivery.rider_id,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[reflex] Stuck-in-transit monitor failed:', err);
+  } finally {
+    client.release();
+  }
+}
+
 if (require.main === module) {
   initializeDatabase()
+    .then(ensureSchemaUpgrades)
     .then(() => {
       server.listen(PORT, () => {
         console.log(`Reflex backend listening on port ${PORT}`);
+        markStuckInTransit();
+        setInterval(markStuckInTransit, 15 * 60 * 1000);
       });
     })
     .catch(async (error) => {
