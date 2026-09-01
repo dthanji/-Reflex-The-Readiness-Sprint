@@ -16,6 +16,8 @@ async function ensureSchemaUpgrades(){
  await pool.query(`UPDATE delivery_requests SET delivery_code='RFX-'||upper(substr(md5(random()::text||id::text||clock_timestamp()::text),1,8)) WHERE delivery_code IS NULL`);
  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_requests_delivery_code ON delivery_requests(delivery_code)');await pool.query('ALTER TABLE delivery_requests ALTER COLUMN delivery_code SET NOT NULL');
  await pool.query(`CREATE TABLE IF NOT EXISTS rider_ratings(id SERIAL PRIMARY KEY,delivery_request_id INTEGER NOT NULL REFERENCES delivery_requests(id),rider_id INTEGER NOT NULL REFERENCES users(id),dispatcher_id INTEGER REFERENCES users(id),retailer_id INTEGER REFERENCES users(id),reviewer_role TEXT NOT NULL CHECK(reviewer_role IN ('dispatcher','retailer')),rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),comment TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),CHECK((reviewer_role='dispatcher' AND dispatcher_id IS NOT NULL AND retailer_id IS NULL) OR (reviewer_role='retailer' AND retailer_id IS NOT NULL AND dispatcher_id IS NULL)))`);
+ await pool.query('ALTER TABLE rider_ratings ALTER COLUMN dispatcher_id DROP NOT NULL');
+ await pool.query('ALTER TABLE rider_ratings DROP CONSTRAINT IF EXISTS rider_ratings_delivery_request_id_key');
  await pool.query('ALTER TABLE rider_ratings ADD COLUMN IF NOT EXISTS retailer_id INTEGER REFERENCES users(id)');
  await pool.query('ALTER TABLE rider_ratings ADD COLUMN IF NOT EXISTS reviewer_role TEXT');
  await pool.query(`UPDATE rider_ratings SET reviewer_role=CASE WHEN retailer_id IS NOT NULL THEN 'retailer' ELSE 'dispatcher' END WHERE reviewer_role IS NULL`);
