@@ -118,6 +118,51 @@
     return match ? Number(match[1]) : null;
   }
 
+  async function copyDeliveryCode(code) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        const helper = document.createElement('textarea');
+        helper.value = code;
+        helper.style.position = 'fixed';
+        helper.style.opacity = '0';
+        document.body.appendChild(helper);
+        helper.focus();
+        helper.select();
+        document.execCommand('copy');
+        helper.remove();
+      }
+      showToast('Delivery code copied', code);
+    } catch (err) {
+      alert(`Delivery code: ${code}`);
+    }
+  }
+
+  function addRetailerDeliveryCode(ticket, request) {
+    if (state.user.role !== 'retailer' || !request.delivery_code) return;
+    const existing = ticket.querySelector('.reflex-delivery-code');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.className = 'reflex-delivery-code';
+    panel.innerHTML = `
+      <div class="reflex-delivery-code-heading">Customer delivery code</div>
+      <div class="reflex-delivery-code-row">
+        <span class="reflex-delivery-code-value">${escapeHtml(request.delivery_code)}</span>
+        <button type="button" class="reflex-copy-code">Copy</button>
+      </div>
+      <div class="reflex-delivery-code-help">Give this code to the customer. The rider uses it to confirm delivery.</div>
+    `;
+    const copyButton = panel.querySelector('.reflex-copy-code');
+    copyButton.onclick = (event) => {
+      event.stopPropagation();
+      copyDeliveryCode(request.delivery_code);
+    };
+    const body = ticket.querySelector('.ticket-body');
+    if (body) body.appendChild(panel);
+  }
+
   function decorateTickets() {
     if (!state.user || !Array.isArray(state.requests)) return;
     document.querySelectorAll('.ticket').forEach(ticket => {
@@ -130,6 +175,8 @@
       if (existing) existing.remove();
       const oldRider = ticket.querySelector('.assigned-rider');
       if (oldRider) oldRider.remove();
+
+      addRetailerDeliveryCode(ticket, request);
 
       if (request.rider_id && request.rider_name) {
         const rider = document.createElement('div');
@@ -250,6 +297,6 @@
   });
 
   const style = document.createElement('style');
-  style.textContent = `.assigned-rider{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 14px;padding:9px 10px;background:#F7F6F5;border-top:1px solid var(--line);font-size:12px}.assigned-rider strong{width:100%;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#706C67}.assigned-rider .mono{color:#706C67}.enhancement-actions{padding:0 14px 12px}.enhancement-actions .btn{width:100%}.reflex-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:1000;width:min(92vw,420px);background:#231F20;color:#fff;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.18);transition:.2s ease;display:flex;flex-direction:column;gap:4px;font-family:Inter,system-ui,sans-serif}.reflex-toast.show{opacity:1;transform:translate(-50%,0)}.reflex-toast strong{font-size:13px}.reflex-toast span{font-size:12px;opacity:.86}.modal-sheet textarea{width:100%;padding:12px;border:1px solid #C9C6C2;border-radius:0;font:15px Inter,system-ui,sans-serif;resize:vertical}.reassign-options{display:flex;flex-direction:column;gap:6px}.rider-option{width:100%;display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);background:#fff;cursor:pointer;font:inherit;text-align:left}.rider-option:hover{background:#F7F6F5}`;
+  style.textContent = `.assigned-rider{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 14px;padding:9px 10px;background:#F7F6F5;border-top:1px solid var(--line);font-size:12px}.assigned-rider strong{width:100%;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#706C67}.assigned-rider .mono{color:#706C67}.enhancement-actions{padding:0 14px 12px}.enhancement-actions .btn{width:100%}.reflex-delivery-code{margin:10px 14px 0;padding:12px;background:#FFF9EC;border:1px solid #E8D8AF}.reflex-delivery-code-heading{font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:#706C67;margin-bottom:7px}.reflex-delivery-code-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.reflex-delivery-code-value{font:700 15px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;color:#231F20}.reflex-copy-code{border:1px solid #C9C6C2;background:#fff;padding:6px 10px;font:600 11px Inter,system-ui,sans-serif;cursor:pointer}.reflex-delivery-code-help{margin-top:7px;font-size:11px;line-height:1.45;color:#706C67}.reflex-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:1000;width:min(92vw,420px);background:#231F20;color:#fff;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.18);transition:.2s ease;display:flex;flex-direction:column;gap:4px;font-family:Inter,system-ui,sans-serif}.reflex-toast.show{opacity:1;transform:translate(-50%,0)}.reflex-toast strong{font-size:13px}.reflex-toast span{font-size:12px;opacity:.86}.modal-sheet textarea{width:100%;padding:12px;border:1px solid #C9C6C2;border-radius:0;font:15px Inter,system-ui,sans-serif;resize:vertical}.reassign-options{display:flex;flex-direction:column;gap:6px}.rider-option{width:100%;display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);background:#fff;cursor:pointer;font:inherit;text-align:left}.rider-option:hover{background:#F7F6F5}`;
   document.head.appendChild(style);
 })();
