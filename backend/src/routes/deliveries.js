@@ -13,8 +13,19 @@ router.post('/', requireAuth, requireRole('retailer'), async (req, res) => {
   if (!customer_name || !customer_phone || !address || !item_description) return res.status(400).json({ error: 'customer_name, customer_phone, address, item_description are required' });
   try { validateMetadata(metadata); } catch (err) { return res.status(400).json({ error: err.message }); }
   const client = await pool.connect();
-  try { const result = await client.query(`INSERT INTO delivery_requests (retailer_id, customer_name, customer_phone, address, item_description, delivery_code) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [req.user.id, customer_name, customer_phone, address, item_description, generateDeliveryCode()]); const request = result.rows[0]; const eventRes = await client.query(`INSERT INTO status_events (delivery_request_id,status,actor_id,metadata) VALUES ($1,'REQUESTED',$2,$3) RETURNING *`, [request.id, req.user.id, JSON.stringify(metadata || {})]); await client.query('COMMIT'); hub.broadcastNewRequest({ ...request, current_status: 'REQUESTED' }); hub.broadcastStatusEvent(eventRes.rows[0], { retailerId: req.user.id, riderId: null }); res.status(201).json({ request, status: 'REQUESTED', delivery_code: request.delivery_code }); }
-  catch (err) { try { await client.query('ROLLBACK'); } catch {} console.error(err); res.status(500).json({ error: 'Internal error' }); }
+  try {
+    await client.query('BEGIN'); let request;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try { const result = await client.query(`INSERT INTO delivery_requests (retailer_id, customer_name, customer_phone, address, item_description, delivery_code) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [req.user.id, customer_name, customer_phone, address, item_description, generateDeliveryCode()]); request = result.rows[0]; break; }
+      catch (err) { if (err.code !== '23505' || !String(err.constraint || '').includes('delivery')) throw err; }
+    }
+    if (!request) throw new Error('Unable to generate a unique delivery code');
+    const eventRes = await client.query(`INSERT INTO status_events (delivery_request_id,status,actor_id,metadata) VALUES ($1,'REQUESTED',$2,$3) RETURNING *`, [request.id, req.user.id, JSON.stringify(metadata || {})]);
+    await client.query('COMMIT');
+    hub.broadcastNewRequest({ ...request, current_status: 'REQUESTED' });
+    hub.broadcastStatusEvent(eventRes.rows[0], { retailerId: req.user.id, riderId: null });
+    res.status(201).json({ request, status: 'REQUESTED', delivery_code: request.delivery_code });
+  } catch (err) { try { await client.query('ROLLBACK'); } catch {} console.error(err); res.status(500).json({ error: 'Internal error' }); }
   finally { client.release(); }
 });
 
