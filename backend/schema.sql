@@ -1,8 +1,6 @@
 -- Reflex schema
--- Design note: delivery_requests has NO mutable "status" column.
+-- Design note: delivery_requests has NO mutable status column.
 -- Current status is always derived from the latest row in status_events.
--- This gives a full, tamper-evident audit trail for free, and is the
--- backbone of the "what happened and when" defense answer.
 
 DROP TABLE IF EXISTS delivery_confirmations CASCADE;
 DROP TABLE IF EXISTS status_events CASCADE;
@@ -11,7 +9,7 @@ DROP TABLE IF EXISTS delivery_requests CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
 CREATE TYPE user_role AS ENUM ('retailer', 'dispatcher', 'rider');
-CREATE TYPE delivery_status AS ENUM ('REQUESTED', 'ASSIGNED', 'PICKED_UP', 'DELIVERED', 'FAILED', 'CANCELLED');
+CREATE TYPE delivery_status AS ENUM ('REQUESTED', 'ASSIGNED', 'PICKED_UP', 'DELIVERED', 'FAILED', 'CANCELLED', 'STUCK_IN_TRANSIT');
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
