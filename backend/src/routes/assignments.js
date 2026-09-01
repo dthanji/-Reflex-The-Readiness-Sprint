@@ -29,6 +29,34 @@ router.post('/', requireAuth, requireRole('dispatcher'), async (req, res) => {
   finally { client.release(); }
 });
 
+// Dispatcher may reassign a delivery only after the current rider reports a failure.
+router.put('/:id/reassign', requireAuth, requireRole('dispatcher'), async (req, res) => {
+  const { rider_id } = req.body;
+  const requestId = req.params.id;
+  if (!rider_id) return res.status(400).json({ error: 'rider_id is required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const lock = await client.query('SELECT * FROM delivery_requests WHERE id = $1 FOR UPDATE', [requestId]);
+    if (!lock.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Delivery request not found' }); }
+    const state = await client.query('SELECT * FROM delivery_request_state WHERE id = $1', [requestId]);
+    const current = state.rows[0];
+    if (current.current_status !== 'FAILED') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'A rider can only be changed after the current rider reports a delivery issue', current_status: current.current_status });
+    }
+    const rider = await client.query("SELECT id, name, phone FROM users WHERE id = $1 AND role = 'rider'", [rider_id]);
+    if (!rider.rows.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'rider_id does not refer to a valid rider' }); }
+    const assignment = await client.query(`INSERT INTO assignments (delivery_request_id, rider_id, assigned_by) VALUES ($1, $2, $3) RETURNING *`, [requestId, rider_id, req.user.id]);
+    const event = await client.query(`INSERT INTO status_events (delivery_request_id, status, actor_id, metadata) VALUES ($1, 'ASSIGNED', $2, $3) RETURNING *`, [requestId, req.user.id, JSON.stringify({ rider_id, reassigned: true, reason: 'Previous rider reported a delivery issue' })]);
+    await client.query('COMMIT');
+    hub.broadcastStatusEvent(event.rows[0], { retailerId: current.retailer_id, riderId: rider_id });
+    hub.broadcastAssignmentNotification({ delivery_request_id: Number(requestId), rider: rider.rows[0], reassigned: true });
+    res.status(201).json({ assignment: assignment.rows[0], status: 'ASSIGNED', rider: rider.rows[0] });
+  } catch (err) { await client.query('ROLLBACK'); console.error(err); res.status(500).json({ error: 'Internal error' }); }
+  finally { client.release(); }
+});
+
 // List available riders for dispatcher assignment UI.
 router.get('/riders', requireAuth, requireRole('dispatcher'), async (req, res) => {
   const { rows } = await pool.query("SELECT id, name, phone FROM users WHERE role = 'rider' ORDER BY name");
