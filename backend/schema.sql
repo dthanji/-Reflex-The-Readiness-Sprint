@@ -2,6 +2,7 @@
 -- Design note: delivery_requests has NO mutable status column.
 -- Current status is always derived from the latest row in status_events.
 
+DROP TABLE IF EXISTS rider_ratings CASCADE;
 DROP TABLE IF EXISTS delivery_confirmations CASCADE;
 DROP TABLE IF EXISTS status_events CASCADE;
 DROP TABLE IF EXISTS assignments CASCADE;
@@ -60,9 +61,20 @@ CREATE TABLE delivery_confirmations (
     scanned_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE rider_ratings (
+    id SERIAL PRIMARY KEY,
+    delivery_request_id INTEGER NOT NULL UNIQUE REFERENCES delivery_requests(id),
+    rider_id INTEGER NOT NULL REFERENCES users(id),
+    dispatcher_id INTEGER NOT NULL REFERENCES users(id),
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX idx_status_events_request ON status_events (delivery_request_id, created_at);
 CREATE INDEX idx_assignments_rider ON assignments (rider_id);
 CREATE INDEX idx_assignments_request ON assignments (delivery_request_id);
+CREATE INDEX idx_rider_ratings_rider ON rider_ratings (rider_id, created_at DESC);
 
 CREATE VIEW delivery_request_state AS
 SELECT dr.id, dr.retailer_id, dr.customer_name, dr.customer_phone, dr.address, dr.item_description,
