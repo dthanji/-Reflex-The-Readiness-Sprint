@@ -1,52 +1,5 @@
-const express = require('express');
-const { pool } = require('../db');
-const { requireAuth, requireRole } = require('../auth');
-
-const router = express.Router();
-
-// Dispatcher rates the rider who completed a delivered order. One rating per delivery.
-router.post('/deliveries/:deliveryId', requireAuth, requireRole('dispatcher'), async (req, res) => {
-  const deliveryId = Number(req.params.deliveryId);
-  const rating = Number(req.body.rating);
-  const comment = typeof req.body.comment === 'string' ? req.body.comment.trim().slice(0, 500) : null;
-  if (!Number.isInteger(deliveryId) || deliveryId < 1) return res.status(400).json({ error: 'Invalid delivery id' });
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: 'Rating must be a whole number from 1 to 5' });
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await client.query(`SELECT s.current_status, s.rider_id FROM delivery_request_state s WHERE s.id = $1 FOR UPDATE`, [deliveryId]);
-    if (!result.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Delivery not found' }); }
-    const delivery = result.rows[0];
-    if (delivery.current_status !== 'DELIVERED') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'A rider can only be rated after the delivery is DELIVERED' });
-    }
-    if (!delivery.rider_id) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Delivered delivery has no assigned rider' }); }
-    const assignment = await client.query(`SELECT id FROM assignments WHERE delivery_request_id = $1 AND rider_id = $2 AND assigned_by = $3 ORDER BY assigned_at DESC LIMIT 1`, [deliveryId, delivery.rider_id, req.user.id]);
-    if (!assignment.rows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'Only the dispatcher who assigned this rider can rate the delivery' }); }
-    const inserted = await client.query(`INSERT INTO rider_ratings (delivery_request_id, rider_id, dispatcher_id, rating, comment) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (delivery_request_id) DO NOTHING RETURNING *`, [deliveryId, delivery.rider_id, req.user.id, rating, comment]);
-    if (!inserted.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'This delivered order has already been rated' }); }
-    await client.query('COMMIT');
-    res.status(201).json({ rating: inserted.rows[0] });
-  } catch (err) { await client.query('ROLLBACK'); console.error(err); res.status(500).json({ error: 'Internal error' }); }
-  finally { client.release(); }
-});
-
-// Riders may see only their own rating history; dispatchers may view a rider before assignment.
-router.get('/rider/:riderId', requireAuth, async (req, res) => {
-  const riderId = Number(req.params.riderId);
-  if (!Number.isInteger(riderId) || riderId < 1) return res.status(400).json({ error: 'Invalid rider id' });
-  if (!['rider', 'dispatcher'].includes(req.user.role) || (req.user.role === 'rider' && Number(req.user.id) !== riderId)) return res.status(403).json({ error: 'You are not allowed to view this rider rating' });
-  const { rows } = await pool.query(`SELECT rr.id, rr.delivery_request_id, rr.rating, rr.comment, rr.created_at, u.name AS dispatcher_name FROM rider_ratings rr JOIN users u ON u.id = rr.dispatcher_id WHERE rr.rider_id = $1 ORDER BY rr.created_at DESC`, [riderId]);
-  const avg = rows.length ? Number((rows.reduce((sum, r) => sum + Number(r.rating), 0) / rows.length).toFixed(2)) : null;
-  res.json({ rider_id: riderId, average_rating: avg, rating_count: rows.length, ratings: rows });
-});
-
-// Dispatcher needs rating summaries while choosing a rider.
-router.get('/riders', requireAuth, requireRole('dispatcher'), async (req, res) => {
-  const { rows } = await pool.query(`SELECT u.id, u.name, u.phone, ROUND(AVG(rr.rating)::numeric, 2) AS average_rating, COUNT(rr.id)::int AS rating_count FROM users u LEFT JOIN rider_ratings rr ON rr.rider_id = u.id WHERE u.role = 'rider' GROUP BY u.id, u.name, u.phone ORDER BY u.name`);
-  res.json({ riders: rows.map(r => ({ ...r, average_rating: r.average_rating === null ? null : Number(r.average_rating) })) });
-});
-
-module.exports = router;
+const express=require('express');const {pool}=require('../db');const {requireAuth,requireRole}=require('../auth');const {limits}=require('../config');
+const router=express.Router();
+router.post('/deliveries/:deliveryId',requireAuth,requireRole('dispatcher'),async(req,res)=>{const deliveryId=Number(req.params.deliveryId);const rating=Number(req.body.rating);const comment=typeof req.body.comment==='string'?req.body.comment.trim().slice(0,limits.commentMaxLength):null;if(!Number.isInteger(deliveryId)||deliveryId<1)return res.status(400).json({error:'Invalid delivery id'});if(!Number.isInteger(rating)||rating<1||rating>5)return res.status(400).json({error:'Rating must be a whole number from 1 to 5'});try{if(comment&&req.body.comment.trim().length>limits.commentMaxLength)return res.status(400).json({error:`Comment must be ${limits.commentMaxLength} characters or fewer`});}catch{}const client=await pool.connect();try{await client.query('BEGIN');const result=await client.query('SELECT s.current_status,s.rider_id FROM delivery_request_state s WHERE s.id=$1 FOR UPDATE',[deliveryId]);if(!result.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Delivery not found'});}const delivery=result.rows[0];if(delivery.current_status!=='DELIVERED'){await client.query('ROLLBACK');return res.status(409).json({error:'A rider can only be rated after the delivery is DELIVERED'});}if(!delivery.rider_id){await client.query('ROLLBACK');return res.status(409).json({error:'Delivered delivery has no assigned rider'});}const assignment=await client.query('SELECT id FROM assignments WHERE delivery_request_id=$1 AND rider_id=$2 AND assigned_by=$3 ORDER BY assigned_at DESC LIMIT 1',[deliveryId,delivery.rider_id,req.user.id]);if(!assignment.rows.length){await client.query('ROLLBACK');return res.status(403).json({error:'Only the dispatcher who assigned this rider can rate the delivery'});}const inserted=await client.query(`INSERT INTO rider_ratings(delivery_request_id,rider_id,dispatcher_id,rating,comment) VALUES($1,$2,$3,$4,$5) ON CONFLICT(delivery_request_id) DO NOTHING RETURNING *`,[deliveryId,delivery.rider_id,req.user.id,rating,comment]);if(!inserted.rows.length){await client.query('ROLLBACK');return res.status(409).json({error:'This delivered order has already been rated'});}await client.query('COMMIT');res.status(201).json({rating:inserted.rows[0]});}catch(err){try{await client.query('ROLLBACK')}catch{}console.error(err);res.status(500).json({error:'Internal error'});}finally{client.release();}});
+router.get('/rider/:riderId',requireAuth,async(req,res)=>{const riderId=Number(req.params.riderId);if(!Number.isInteger(riderId)||riderId<1)return res.status(400).json({error:'Invalid rider id'});if(!['rider','dispatcher'].includes(req.user.role)||(req.user.role==='rider'&&Number(req.user.id)!==riderId))return res.status(403).json({error:'You are not allowed to view this rider rating'});const {rows}=await pool.query(`SELECT rr.id,rr.delivery_request_id,rr.rating,rr.comment,rr.created_at,u.name AS dispatcher_name FROM rider_ratings rr JOIN users u ON u.id=rr.dispatcher_id WHERE rr.rider_id=$1 ORDER BY rr.created_at DESC`,[riderId]);const avg=rows.length?Number((rows.reduce((sum,r)=>sum+Number(r.rating),0)/rows.length).toFixed(2)):null;res.json({rider_id:riderId,average_rating:avg,rating_count:rows.length,ratings:rows});});
+router.get('/riders',requireAuth,requireRole('dispatcher'),async(req,res)=>{const {rows}=await pool.query(`SELECT u.id,u.name,u.phone,ROUND(AVG(rr.rating)::numeric,2) AS average_rating,COUNT(rr.id)::int AS rating_count FROM users u LEFT JOIN rider_ratings rr ON rr.rider_id=u.id WHERE u.role='rider' GROUP BY u.id,u.name,u.phone ORDER BY u.name`);res.json({riders:rows.map(r=>({...r,average_rating:r.average_rating===null?null:Number(r.average_rating)}))});});module.exports=router;
