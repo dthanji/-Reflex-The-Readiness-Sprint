@@ -290,6 +290,34 @@ function renderLedger(history) {
   `).join('');
 }
 
+function renderRetailerTimeline(r) {
+  const baseSteps = ['REQUESTED', 'ASSIGNED', 'PICKED_UP', 'DELIVERED'];
+  const currentIndex = baseSteps.indexOf(r.current_status);
+  const isIssue = ['FAILED', 'STUCK_IN_TRANSIT', 'CANCELLED'].includes(r.current_status);
+  const activeIndex = currentIndex >= 0 ? currentIndex : Math.max(0, baseSteps.indexOf('ASSIGNED'));
+
+  const steps = baseSteps.map((step, index) => {
+    const complete = currentIndex >= 0 ? index <= currentIndex : index < activeIndex;
+    const current = currentIndex === index;
+    return `<div class="reflex-tracking-step ${complete ? 'complete' : ''} ${current ? 'current' : ''}">
+      <span class="reflex-tracking-dot">${complete ? '✓' : index + 1}</span>
+      <span class="reflex-tracking-label">${statusLabel(step)}</span>
+    </div>`;
+  }).join('');
+
+  const issue = isIssue ? `<div class="reflex-tracking-issue status-${r.current_status}">
+    <strong>${statusLabel(r.current_status)}</strong>
+    <span>${r.current_status === 'FAILED' ? 'Delivery issue reported by rider.' : r.current_status === 'STUCK_IN_TRANSIT' ? 'No delivery confirmation within 24 hours of pickup.' : 'Delivery was cancelled.'}</span>
+  </div>` : '';
+
+  return `<div class="reflex-tracking" data-request-id="${r.id}">
+    <div class="reflex-tracking-title">Delivery progress</div>
+    <div class="reflex-tracking-steps">${steps}</div>
+    ${issue}
+    <div class="reflex-tracking-live">Current status: <strong>${statusLabel(r.current_status)}</strong></div>
+  </div>`;
+}
+
 function renderTicket(r) {
   const expanded = state.expandedTicket === r.id;
   const role = state.user.role;
@@ -311,6 +339,7 @@ function renderTicket(r) {
     PICKED_UP: 'var(--amber-status)',
     DELIVERED: 'var(--green-status)',
     FAILED: 'var(--red-status)',
+    STUCK_IN_TRANSIT: 'var(--red-status)',
     CANCELLED: 'var(--red-status)',
   }[r.current_status] || 'var(--line)';
 
@@ -330,6 +359,7 @@ function renderTicket(r) {
           <span>${r.customer_phone}</span>
           <span>${timeAgo(r.status_updated_at || r.created_at)}</span>
         </div>
+        ${role === 'retailer' ? renderRetailerTimeline(r) : ''}
         ${expanded ? `<div class="ledger" data-ledger="${r.id}"><span class="mono" style="font-size:11px;color:#8A8A7E;">Loading ledger…</span></div>` : ''}
       </div>
       ${actions}
@@ -362,7 +392,7 @@ function renderRetailerView() {
 function renderDispatcherView() {
   const open = state.requests.filter(r => r.current_status === 'REQUESTED');
   const active = state.requests.filter(r => ['ASSIGNED', 'PICKED_UP'].includes(r.current_status));
-  const done = state.requests.filter(r => ['DELIVERED', 'FAILED', 'CANCELLED'].includes(r.current_status));
+  const done = state.requests.filter(r => ['DELIVERED', 'FAILED', 'CANCELLED', 'STUCK_IN_TRANSIT'].includes(r.current_status));
   return `
     <div class="section-title">Open <span class="count-badge">${open.length}</span></div>
     ${renderRequestList(open, '📥', 'No unassigned requests right now.')}
@@ -375,7 +405,7 @@ function renderDispatcherView() {
 
 function renderRiderView() {
   const active = state.requests.filter(r => ['ASSIGNED', 'PICKED_UP'].includes(r.current_status));
-  const done = state.requests.filter(r => ['DELIVERED', 'FAILED'].includes(r.current_status));
+  const done = state.requests.filter(r => ['DELIVERED', 'FAILED', 'STUCK_IN_TRANSIT'].includes(r.current_status));
   return `
     <div class="section-title">Your route <span class="count-badge">${active.length}</span></div>
     ${renderRequestList(active, '🛵', 'Nothing assigned to you yet.')}
