@@ -27,6 +27,7 @@ CREATE TABLE delivery_requests (
     customer_phone TEXT NOT NULL,
     address TEXT NOT NULL,
     item_description TEXT NOT NULL,
+    delivery_code TEXT UNIQUE NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -64,7 +65,8 @@ CREATE INDEX idx_assignments_rider ON assignments (rider_id);
 CREATE INDEX idx_assignments_request ON assignments (delivery_request_id);
 
 CREATE VIEW delivery_request_state AS
-SELECT dr.id, dr.retailer_id, dr.customer_name, dr.customer_phone, dr.address, dr.item_description, dr.created_at,
+SELECT dr.id, dr.retailer_id, dr.customer_name, dr.customer_phone, dr.address, dr.item_description,
+       dr.delivery_code, dr.created_at,
        latest.status AS current_status, latest.created_at AS status_updated_at, a.rider_id
 FROM delivery_requests dr
 LEFT JOIN LATERAL (
