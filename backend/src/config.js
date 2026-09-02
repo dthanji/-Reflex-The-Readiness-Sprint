@@ -6,6 +6,7 @@ const numberFromEnv = (name, fallback) => {
 module.exports = {
   auth: {
     accessTokenTtl: process.env.JWT_ACCESS_TTL || '30m',
+    refreshTokenTtlDays: numberFromEnv('JWT_REFRESH_TTL_DAYS', 30),
   },
   limits: {
     jsonBodyBytes: numberFromEnv('JSON_BODY_LIMIT_BYTES', 32 * 1024),
