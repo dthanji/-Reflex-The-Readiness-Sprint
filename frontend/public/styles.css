@@ -111,6 +111,15 @@ h1, h2, h3, .display {
 main { flex: 1; padding: 16px; padding-bottom: 90px; }
 
 /* ---------- Auth screen: retail account / sign-in page ---------- */
+.auth-shell {
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-sunken);
+  padding: 32px 20px;
+}
 .auth-screen {
   flex: 1;
   display: flex;
@@ -129,7 +138,25 @@ main { flex: 1; padding: 16px; padding-bottom: 90px; }
 .auth-card {
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  padding: 28px 24px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(35,31,32,0.04), 0 12px 32px rgba(35,31,32,0.07);
+  padding: 36px 32px;
+  width: 100%;
+  max-width: 400px;
+}
+.auth-card .brand {
+  display: block;
+  font-family: 'Libre Baskerville', Georgia, serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+  margin-bottom: 18px;
+}
+.auth-card h1 {
+  font-size: 26px;
+  line-height: 1.2;
+  margin-bottom: 26px;
 }
 .auth-card h2 {
   font-size: 20px;
@@ -142,7 +169,7 @@ main { flex: 1; padding: 16px; padding-bottom: 90px; }
   line-height: 1.5;
   font-family: 'Inter', sans-serif;
 }
-.field { margin-bottom: 16px; }
+.field { margin-bottom: 18px; }
 .field label {
   display: block;
   font-size: 11px;
@@ -155,18 +182,46 @@ main { flex: 1; padding: 16px; padding-bottom: 90px; }
 }
 .field input, .field select {
   width: 100%;
-  padding: 12px 12px;
+  padding: 13px 14px;
   border: 1px solid #C9C6C2;
-  border-radius: 0;
+  border-radius: 3px;
   background: var(--paper-raised);
   font-size: 15px;
   font-family: 'Inter', sans-serif;
   color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .field input:focus, .field select:focus {
   outline: none;
   border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(35,31,32,0.07);
 }
+.error {
+  background: #FBE7E7;
+  border-left: 3px solid var(--red-status);
+  color: var(--red-status);
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 18px;
+  font-family: 'Inter', sans-serif;
+  border-radius: 0 3px 3px 0;
+}
+.link-btn {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  padding-top: 18px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--amber);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--amber-deep); text-decoration: underline; }
 .btn {
   display: inline-block;
   width: 100%;
