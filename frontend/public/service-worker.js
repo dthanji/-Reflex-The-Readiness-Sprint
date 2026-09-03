@@ -1,7 +1,9 @@
 // Caches the app shell so the PWA still loads (and riders can still queue
 // status updates locally) with no signal. It does NOT cache /api/* — API
 // calls fail fast when offline and app.js catches that to queue via IndexedDB.
-const CACHE_NAME = 'reflex-shell-v4';
+// Bump this whenever shell JavaScript/CSS changes so deployed clients do not
+// stay pinned to an older cache-first app shell.
+const CACHE_NAME = 'reflex-shell-v5';
 const SHELL_FILES = [
   '/',
   '/index.html',
